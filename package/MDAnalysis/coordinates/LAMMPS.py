@@ -291,6 +291,16 @@ class DATAWriter(base.WriterBase):
 
     format = "DATA"
 
+    @staticmethod
+    def _build_typemap(bonds):
+        """Build a mapping from unique bond types to consecutive 1-based integers."""
+        unique_types = sorted(set(bond.type for bond in bonds),
+                              key=lambda x: (tuple(x) if isinstance(x, (tuple, list))
+                                             else (x,)))
+        return {(tuple(t) if isinstance(t, (tuple, list)) else t): i
+                for i, t in enumerate(unique_types, start=1)}
+
+
     def __init__(self, filename, convert_units=True, **kwargs):
         """Set up a DATAWriter
 
@@ -396,19 +406,16 @@ class DATAWriter(base.WriterBase):
         self.f.write("\n")
         self.f.write("{}\n".format(btype_sections[bonds.btype]))
         self.f.write("\n")
-        for bond, i in zip(bonds, range(1, len(bonds) + 1)):
-            try:
-                self.f.write(
-                    "{:d} {:d} ".format(i, int(bond.type))
-                    + " ".join((bond.atoms.indices + 1).astype(str))
-                    + "\n"
-                )
-            except TypeError:
-                errmsg = (
-                    f"LAMMPS DATAWriter: Trying to write bond, but bond "
-                    f"type {bond.type} is not numerical."
-                )
-                raise TypeError(errmsg) from None
+        typemap = self._build_typemap(bonds)
+        for i, bond in enumerate(bonds, start=1):
+            btype_key = (tuple(bond.type) if isinstance(bond.type, (tuple, list))
+                         else bond.type)
+            bid = typemap[btype_key]
+            self.f.write(
+                "{:d} {:d} ".format(i, bid)
+                + " ".join((bond.atoms.indices + 1).astype(str))
+                + "\n"
+            )
 
     def _write_dimensions(self, dimensions):
         """Convert dimensions to triclinic vectors, convert lengths to native
@@ -498,12 +505,16 @@ class DATAWriter(base.WriterBase):
             ]
 
             for btype, attr_name in attrs:
-                features[btype] = atoms.__getattribute__(attr_name)
+                if hasattr(atoms, attr_name):
+                    features[btype] = getattr(atoms, attr_name)
+                    features[btype] = features[btype].atomgroup_intersection(
+                        atoms, strict=True
+                    )
                 self.f.write(
-                    "{:>12d}  {}\n".format(len(features[btype]), attr_name)
-                )
-                features[btype] = features[btype].atomgroup_intersection(
-                    atoms, strict=True
+                    "{:>12d}  {}\n".format(
+                        len(features[btype]) if btype in features else 0,
+                        attr_name,
+                    )
                 )
 
             self.f.write("\n")

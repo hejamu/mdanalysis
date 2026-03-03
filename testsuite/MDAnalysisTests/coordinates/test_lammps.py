@@ -565,6 +565,56 @@ class TestDataWriterErrors(object):
             raise pytest.fail()
 
 
+class TestBuildTypemap(object):
+    """Tests for DATAWriter._build_typemap"""
+
+    @staticmethod
+    def _make_bond(btype):
+        """Create a simple mock bond with the given type."""
+
+        class MockBond:
+            def __init__(self, t):
+                self.type = t
+
+        return MockBond(btype)
+
+    def test_integer_types(self):
+        """Integer bond types are mapped to consecutive 1-based IDs."""
+        from MDAnalysis.coordinates.LAMMPS import DATAWriter
+
+        bonds = [self._make_bond(3), self._make_bond(1), self._make_bond(3)]
+        typemap = DATAWriter._build_typemap(bonds)
+        assert typemap == {1: 1, 3: 2}
+
+    def test_tuple_types(self):
+        """Tuple bond types are mapped to consecutive 1-based IDs."""
+        from MDAnalysis.coordinates.LAMMPS import DATAWriter
+
+        bonds = [
+            self._make_bond(("2", "3")),
+            self._make_bond(("1", "1")),
+            self._make_bond(("2", "3")),
+        ]
+        typemap = DATAWriter._build_typemap(bonds)
+        assert typemap == {("1", "1"): 1, ("2", "3"): 2}
+
+    def test_single_type(self):
+        """A single unique type maps to 1."""
+        from MDAnalysis.coordinates.LAMMPS import DATAWriter
+
+        bonds = [self._make_bond(5), self._make_bond(5)]
+        typemap = DATAWriter._build_typemap(bonds)
+        assert typemap == {5: 1}
+
+    def test_values_start_at_one(self):
+        """All mapped IDs start at 1 regardless of input values."""
+        from MDAnalysis.coordinates.LAMMPS import DATAWriter
+
+        bonds = [self._make_bond(10), self._make_bond(20), self._make_bond(30)]
+        typemap = DATAWriter._build_typemap(bonds)
+        assert list(typemap.values()) == [1, 2, 3]
+
+
 class TestLammpsDumpReader(object):
     @pytest.fixture(params=["ascii", "bz2", "gzip"])
     def u(self, tmpdir, request):
